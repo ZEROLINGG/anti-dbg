@@ -1,0 +1,26 @@
+[package]
+name = "anti-dbg"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lib-unknown = { version = "0.1" }
+anti-dbg-macros = { path = "anti-dbg-macros" }
+
+
+
+[features]
+default = [
+    "win_checks_all"
+]
+
+win_checks_api = []
+win_checks_peb = []
+win_checks_hw = []
+win_checks_exception = []
+win_checks_all = [
+    "win_checks_api",
+    "win_checks_peb",
+    "win_checks_hw",
+    "win_checks_exception"
+]

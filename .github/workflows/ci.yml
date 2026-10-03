@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt + clippy + test + doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt (anti-dbg + anti-dbg-macros)
+        run: |
+          cargo fmt --all -- --check
+          cd anti-dbg-macros && cargo fmt --all -- --check
+
+      - name: clippy (anti-dbg + anti-dbg-macros)
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cd anti-dbg-macros && cargo clippy --all-targets -- -D warnings
+
+      - name: test (anti-dbg)
+        run: |
+          cargo test --lib
+
+      - name: doc build (deny warnings)
+        run: |
+          cargo doc --no-deps
+          cd anti-dbg-macros && cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
