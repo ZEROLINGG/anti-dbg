@@ -27,6 +27,21 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 // 1. Linux/Android 特有检测 (纯 Syscall 实现，防 libc Hook)
 // ==============================================================================
 
+/// 检查 `/proc/self/status` 的 `TracerPid` 是否非零（Linux/Android）。
+///
+/// 返回 `None` 表示无法读取状态文件；`Some(true)` 表示正被跟踪。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::unix::check_tracer_pid;
+///
+/// let _ = check_tracer_pid();
+/// ```
+///
+/// # Panics
+///
+/// - 全局检测锁被毒化（此前持有者 panic）时发生 panic。
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn check_tracer_pid() -> Option<bool> {
     let _guard = ANTI_DBG_LOCK.lock().unwrap();
@@ -57,6 +72,19 @@ pub fn check_tracer_pid() -> Option<bool> {
     None
 }
 
+/// 检查 `/proc/self/wchan` 是否为 `ptrace_stop`（Linux/Android）。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::unix::check_wchan;
+///
+/// let _ = check_wchan();
+/// ```
+///
+/// # Panics
+///
+/// - 全局检测锁被毒化时发生 panic。
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn check_wchan() -> Option<bool> {
     let _guard = ANTI_DBG_LOCK.lock().unwrap();
@@ -74,6 +102,19 @@ pub fn check_wchan() -> Option<bool> {
     None
 }
 
+/// 尝试 `ptrace(TRACEME)`：失败（`EPERM` 等）则说明已被跟踪（Linux/Android）。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::unix::check_ptrace_traceme;
+///
+/// let _ = check_ptrace_traceme();
+/// ```
+///
+/// # Panics
+///
+/// - 全局检测锁被毒化时发生 panic。
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn check_ptrace_traceme() -> Option<bool> {
     let _guard = ANTI_DBG_LOCK.lock().unwrap();
@@ -169,6 +210,16 @@ pub fn check_ptrace_traceme() -> Option<bool> {
 // 2. macOS/iOS 特有检测
 // ==============================================================================
 
+/// 经 `sysctl kern.proc.pid` 检查 `P_TRACED` 标志（macOS/iOS）。
+///
+/// # Examples
+///
+/// ```no_run
+/// use anti_dbg::unix::check_sysctl_ptrace;
+///
+/// // 仅 macOS/iOS 生效，其他平台恒为 None
+/// let _ = check_sysctl_ptrace();
+/// ```
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub fn check_sysctl_ptrace() -> Option<bool> {
     const CTL_KERN: i32 = 1;
@@ -215,6 +266,17 @@ pub fn check_sysctl_ptrace() -> Option<bool> {
 // 3. 通用 Unix 检测 (环境与动态库)
 // ==============================================================================
 
+/// 扫描已加载动态库是否含注入框架关键字（frida / magisk / qemu 等）。
+///
+/// Linux/Android 读 `/proc/self/maps`，macOS/iOS 走 dyld 接口。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::unix::check_suspicious_dylibs;
+///
+/// let _ = check_suspicious_dylibs();
+/// ```
 pub fn check_suspicious_dylibs() -> Option<bool> {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
@@ -303,6 +365,15 @@ pub fn check_suspicious_dylibs() -> Option<bool> {
     }
 }
 
+/// 检查进程环境变量是否含注入痕迹（`LD_PRELOAD` / `DYLD_INSERT_LIBRARIES` 等）。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::unix::check_env;
+///
+/// let _ = check_env();
+/// ```
 pub fn check_env() -> bool {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
@@ -348,6 +419,15 @@ pub fn check_env() -> bool {
     false
 }
 
+/// Unix 平台综合检测：随机打乱检测项后取前 `x` 项执行。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::unix::checks;
+///
+/// let _ = checks(5);
+/// ```
 pub fn checks(x: u8) -> bool {
     let mut checks: Vec<fn() -> bool> = Vec::with_capacity(10);
 

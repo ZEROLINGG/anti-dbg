@@ -2,6 +2,10 @@
 name = "anti-dbg-macros"
 version = "0.1.0"
 edition = "2024"
+description = "anti-dbg 的过程宏实现：函数级检测注入属性宏"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/ZEROLINGG/anti-dbg"
 
 
 [lib]

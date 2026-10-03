@@ -6,6 +6,40 @@
 
 底层随机数与系统调用来自 [`lib-unknown`](https://github.com/ZEROLINGG/lib-unknown)。
 
+## 目录
+
+- [设计哲学](#设计哲学-design-philosophy)
+- [快速开始](#快速开始-quick-start)
+- [API 一览](#api-一览)
+- [适用场景 vs 不适用场景](#适用场景-vs-不适用场景)
+- [特性标志](#特性标志-feature-flags)
+- [平台与环境支持](#平台与环境支持)
+- [最小 Rust 版本](#最小-rust-版本-msrv)
+- [安全性](#安全性-security)
+- [贡献](#贡献-contributing)
+- [变更日志](#变更日志-changelog)
+- [开源协议](#开源协议-license)
+
+## 设计哲学 (Design Philosophy)
+
+### 核心原则
+
+1. **多层异构检测** —— 环境痕迹（`/proc`、PEB、动态库关键字）、行为计时（`pow_sleep` 自校验）、编译期注入三层互补，单层被绕过不代表整体失效。
+2. **随机化编排** —— 检测项经 `shuffle` 打乱后抽查，注入宏每次编译形态不同，避免固定指纹被批量识别与 patch。
+3. **直调系统调用** —— Unix 侧绕过 libc（纯 syscall，防 Hook），Windows 侧动态解析 API（无导入表痕迹）。
+
+### 权衡取舍 (Trade-offs)
+
+| 我们选择了 | 而不是 | 原因 |
+| :--- | :--- | :--- |
+| 启发式检测（可能误报） | 强语义保证 | 反调试本质是信号采集，`Option<bool>` 显式表达“未知” |
+| PoW 忙等计时 | 系统 sleep | 忙等时间可被密码学签名绑定（`verify_sleep`），普通 sleep 无法自证 |
+
+### 非目标 (Non-Goals)
+
+- 不做反虚拟机、不做代码混淆（混淆请见 `obfstr2`）。
+- 不承诺检出率：本库提高分析成本，不保证拦住定向调试。
+
 ## 快速开始
 
 ```toml
@@ -48,6 +82,18 @@ fn main() {
 | `win::{is_debugger_present, check_remote_debugger_present, check_debug_port, check_peb_being_debugged, check_hardware_breakpoints, ...}` | Windows 侧检测项（PEB / 调试端口 / 硬件断点 / VEH 异常等） |
 | `#[anti]` / `#[insert_1]` / `#[insert_2]` | 编译期检测注入属性宏 |
 
+## 适用场景 vs 不适用场景
+
+**适合：**
+
+- 需要在程序关键路径前做一次调试环境体检的场景。
+- 需要反计时篡改的延时逻辑（`pow_sleep` + `verify_sleep`）。
+
+**不适合：**
+
+- 指望单库彻底防住调试器的场景（对抗是成本游戏，见非目标）。
+- 对误报零容忍的关键业务（启发式检测可能误报，请自行兜底）。
+
 ## 特性标志 (Feature Flags)
 
 | Feature | 默认启用 | 说明 |
@@ -66,6 +112,23 @@ fn main() {
 ## 最小 Rust 版本 (MSRV)
 
 MSRV 未在 `Cargo.toml` 声明，在 `rustc 1.98.1` 测试稳定。
+
+## 安全性 (Security)
+
+检测逻辑本身即安全敏感面：误报可致合法用户被踢下线，漏报则形同虚设。请根据自身威胁模型组合检测项，不要单点依赖。
+
+如发现安全漏洞，请直接提交 Issue 说明（本仓库暂无私有上报通道）。
+
+## 贡献 (Contributing)
+
+欢迎提交 Issue 和 Pull Request！
+
+- 本地验证：`cargo test --lib`（计时类测试，约数秒）。
+- 提交 PR 前请先阅读[设计哲学](#设计哲学-design-philosophy)：新增检测项请同时接入 `checks()` 的随机编排，保持“无固定指纹”原则。
+
+## 变更日志 (Changelog)
+
+版本变更详情请见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 开源协议
 

@@ -2,10 +2,14 @@
 name = "anti-dbg"
 version = "0.1.0"
 edition = "2024"
+description = "反调试检测库：环境检查、时钟混淆与编译期检测注入"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/ZEROLINGG/anti-dbg"
 
 [dependencies]
 lib-unknown = { version = "0.1" }
-anti-dbg-macros = { path = "anti-dbg-macros" }
+anti-dbg-macros = { version = "0.1", path = "anti-dbg-macros" }
 
 
 

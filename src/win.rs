@@ -6,14 +6,54 @@
 // 全局类型与函数指针定义 (类型定义不占二进制体积，统一放置)
 // ==============================================================================
 
+/// `GetCurrentProcess`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用，遵守 `system` 调用约定。
 pub type FnGetCurrentProcess = unsafe extern "system" fn() -> *mut core::ffi::c_void;
+/// `GetCurrentThread`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用，遵守 `system` 调用约定。
 pub type FnGetCurrentThread = unsafe extern "system" fn() -> *mut core::ffi::c_void;
+/// `CloseHandle`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用；传入的句柄须有效。
 pub type FnCloseHandle = unsafe extern "system" fn(*mut core::ffi::c_void) -> i32;
+/// `GetLastError`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用，遵守 `system` 调用约定。
 pub type FnGetLastError = unsafe extern "system" fn() -> u32;
+/// `SetLastError`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用，遵守 `system` 调用约定。
 pub type FnSetLastError = unsafe extern "system" fn(u32);
+/// `IsDebuggerPresent`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用，遵守 `system` 调用约定。
 pub type FnIsDebuggerPresent = unsafe extern "system" fn() -> i32;
+/// `CheckRemoteDebuggerPresent`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用；输出指针须指向可写 `i32`。
 pub type FnCheckRemoteDebuggerPresent =
     unsafe extern "system" fn(*mut core::ffi::c_void, *mut i32) -> i32;
+/// `NtQueryInformationProcess`（ntdll.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用；缓冲指针与长度须匹配。
 pub type FnNtQueryInformationProcess = unsafe extern "system" fn(
     *mut core::ffi::c_void,
     u32,
@@ -21,17 +61,33 @@ pub type FnNtQueryInformationProcess = unsafe extern "system" fn(
     u32,
     *mut u32,
 ) -> i32;
+/// `GetThreadContext`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用；上下文指针须有效。
 pub type FnGetThreadContext =
     unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> i32;
+/// `AddVectoredExceptionHandler`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用；回调须为合法异常处理函数。
 pub type FnAddVectoredExceptionHandler = unsafe extern "system" fn(
     u32,
     Option<unsafe extern "system" fn(*mut core::ffi::c_void) -> i32>,
 ) -> *mut core::ffi::c_void;
+/// `RemoveVectoredExceptionHandler`（kernel32.dll）的动态解析函数指针类型。
+///
+/// # Safety
+///
+/// 须经 `resolve` 获取有效地址后在 `unsafe` 块中调用；句柄须为已注册值。
 pub type FnRemoveVectoredExceptionHandler =
     unsafe extern "system" fn(*mut core::ffi::c_void) -> u32;
 
 // CONTEXT 结构体较大，仅在硬件断点或异常检测时编译
 #[cfg(any(feature = "win_checks_hw", feature = "win_checks_exception"))]
+/// XMM 寄存器槽位（`CONTEXT.VectorRegister` 数组元素，`#[repr(C)]` 与系统定义对齐）。
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct M128A {
@@ -52,6 +108,7 @@ impl Default for M128A {
 ))]
 #[repr(C)]
 #[derive(Clone, Copy)]
+/// x86_64/arm64ec 线程上下文（含 `Dr0~Dr7` 硬件断点寄存器，`#[repr(C)]` 与系统定义对齐）。
 pub struct CONTEXT {
     pub P1Home: u64,
     pub P2Home: u64,
@@ -146,12 +203,42 @@ unsafe fn query_process_info<T: Default>(info_class: u32) -> Option<T> {
     }
 }
 
+/// 调用 `IsDebuggerPresent`（需启用 `win_checks_api` 特性）。
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // 仅 Windows 生效；Linux 下编译通过但调用无意义，故不做 doctest。
+/// use anti_dbg::win::is_debugger_present;
+///
+/// let _ = is_debugger_present();
+/// ```
+///
+/// # Feature Requirement
+///
+/// 需要启用 `"win_checks_api"` 特性。
 #[cfg(feature = "win_checks_api")]
 pub fn is_debugger_present() -> bool {
     lib_unknown::sys::win::resolve::<FnIsDebuggerPresent>("kernel32.dll", "IsDebuggerPresent")
         .map_or(false, |f| unsafe { f() != 0 })
 }
 
+/// 调用 `CheckRemoteDebuggerPresent`（需启用 `win_checks_api` 特性）。
+///
+/// 解析失败返回 `None`。
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // 仅 Windows 生效，不做 doctest。
+/// use anti_dbg::win::check_remote_debugger_present;
+///
+/// let _ = check_remote_debugger_present();
+/// ```
+///
+/// # Feature Requirement
+///
+/// 需要启用 `"win_checks_api"` 特性。
 #[cfg(feature = "win_checks_api")]
 pub fn check_remote_debugger_present() -> Option<bool> {
     let get_curr_proc =
@@ -171,11 +258,39 @@ pub fn check_remote_debugger_present() -> Option<bool> {
     }
 }
 
+/// 查询进程 `DebugPort` 是否非零（需启用 `win_checks_api` 特性）。
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // 仅 Windows 生效，不做 doctest。
+/// use anti_dbg::win::check_debug_port;
+///
+/// let _ = check_debug_port();
+/// ```
+///
+/// # Feature Requirement
+///
+/// 需要启用 `"win_checks_api"` 特性。
 #[cfg(feature = "win_checks_api")]
 pub fn check_debug_port() -> Option<bool> {
     unsafe { query_process_info::<usize>(PROCESS_DEBUG_PORT).map(|port| port != 0) }
 }
 
+/// 查询进程 `DebugObjectHandle` 是否非空（需启用 `win_checks_api` 特性）。
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // 仅 Windows 生效，不做 doctest。
+/// use anti_dbg::win::check_debug_object;
+///
+/// let _ = check_debug_object();
+/// ```
+///
+/// # Feature Requirement
+///
+/// 需要启用 `"win_checks_api"` 特性。
 #[cfg(feature = "win_checks_api")]
 pub fn check_debug_object() -> Option<bool> {
     unsafe {
@@ -184,6 +299,20 @@ pub fn check_debug_object() -> Option<bool> {
     }
 }
 
+/// 检查 `NoDebugInherit` 标志是否被清零（需启用 `win_checks_api` 特性）。
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // 仅 Windows 生效，不做 doctest。
+/// use anti_dbg::win::check_debug_flags;
+///
+/// let _ = check_debug_flags();
+/// ```
+///
+/// # Feature Requirement
+///
+/// 需要启用 `"win_checks_api"` 特性。
 #[cfg(feature = "win_checks_api")]
 pub fn check_debug_flags() -> Option<bool> {
     unsafe { query_process_info::<u32>(PROCESS_DEBUG_FLAGS).map(|flags| flags == 0) }
@@ -194,15 +323,19 @@ pub fn check_debug_flags() -> Option<bool> {
 // ==============================================================================
 
 #[cfg(feature = "win_checks_peb")]
+/// `NtGlobalFlag` 调试标志掩码（`0x70`）。
 pub const DEBUG_FLAGS: u32 = 0x70;
 
 #[cfg(all(feature = "win_checks_peb", target_arch = "x86_64"))]
+/// PEB 内 `NtGlobalFlag` 字段偏移（x86_64）。
 pub const PEB_NT_GLOBAL_FLAG_OFFSET: usize = 0xBC;
 #[cfg(all(feature = "win_checks_peb", target_arch = "x86"))]
+/// PEB 内 `NtGlobalFlag` 字段偏移（x86）。
 pub const PEB_NT_GLOBAL_FLAG_OFFSET: usize = 0x68;
 
 #[cfg(feature = "win_checks_peb")]
 #[repr(C)]
+/// 精简 PEB 头（仅含定位 `BeingDebugged` 所需的前缀字段）。
 pub struct PEB {
     pub reserved1: [u8; 2],
     pub being_debugged: u8,
@@ -233,6 +366,22 @@ unsafe fn get_peb() -> *const PEB {
     ::core::ptr::null()
 }
 
+/// 经 GS/FS 段寄存器读取 PEB 的 `BeingDebugged` 字节（需启用 `win_checks_peb` 特性）。
+///
+/// 非 x86 系架构恒返回 `None`。
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // 仅 Windows 生效，不做 doctest。
+/// use anti_dbg::win::check_peb_being_debugged;
+///
+/// let _ = check_peb_being_debugged();
+/// ```
+///
+/// # Feature Requirement
+///
+/// 需要启用 `"win_checks_peb"` 特性。
 #[cfg(feature = "win_checks_peb")]
 pub fn check_peb_being_debugged() -> Option<bool> {
     unsafe {
@@ -244,6 +393,20 @@ pub fn check_peb_being_debugged() -> Option<bool> {
     }
 }
 
+/// 检查 PEB 偏移处的 `NtGlobalFlag` 是否含调试标志（需启用 `win_checks_peb` 特性）。
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // 仅 Windows 生效，不做 doctest。
+/// use anti_dbg::win::check_peb_nt_global_flag;
+///
+/// let _ = check_peb_nt_global_flag();
+/// ```
+///
+/// # Feature Requirement
+///
+/// 需要启用 `"win_checks_peb"` 特性。
 #[cfg(feature = "win_checks_peb")]
 pub fn check_peb_nt_global_flag() -> Option<bool> {
     unsafe {
@@ -261,11 +424,27 @@ pub fn check_peb_nt_global_flag() -> Option<bool> {
 // ==============================================================================
 
 #[cfg(all(feature = "win_checks_hw", target_arch = "x86_64"))]
+/// `GetThreadContext` 读取调试寄存器的标志（x86_64）。
 pub const CONTEXT_DEBUG_REGISTERS: u32 = 0x100010;
 #[cfg(all(feature = "win_checks_hw", target_arch = "x86"))]
+/// `GetThreadContext` 读取调试寄存器的标志（x86）。
 pub const CONTEXT_DEBUG_REGISTERS: u32 = 0x10010;
 
 #[cfg(feature = "win_checks_hw")]
+/// 检查 `Dr0~Dr3` 硬件断点寄存器是否被设置（需启用 `win_checks_hw` 特性）。
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // 仅 Windows 生效，不做 doctest。
+/// use anti_dbg::win::check_hardware_breakpoints;
+///
+/// let _ = check_hardware_breakpoints();
+/// ```
+///
+/// # Feature Requirement
+///
+/// 需要启用 `"win_checks_hw"` 特性。
 pub fn check_hardware_breakpoints() -> Option<bool> {
     let get_curr_thread =
         lib_unknown::sys::win::resolve::<FnGetCurrentThread>("kernel32.dll", "GetCurrentThread")?;

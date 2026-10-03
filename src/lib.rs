@@ -1,4 +1,8 @@
 //anti-dbg/src/lib.rs
+//! 反调试检测库：环境检查 + 时钟混淆 + 编译期检测注入。
+//!
+//! 平台综合入口见 [`checks`]；Windows / Unix 专项分别见 `win` / `unix` 模块；
+//! 编译期注入属性宏（`#[anti]` 等）由 `anti-dbg-macros` 提供并在此转发。
 pub use anti_dbg_macros::*;
 pub use lib_unknown as lib;
 use lib_unknown::crypto::base::{derive, mix64};
@@ -8,6 +12,18 @@ use std::hint::black_box;
 pub mod unix;
 pub mod win;
 
+/// 运行平台相关的反调试综合检测。
+///
+/// 随机打乱检测项后取前 `x` 项执行，任一命中即返回 `true`。
+/// 各单项返回 `None`（环境不支持）时按未命中处理。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::checks;
+///
+/// let _ = checks(5);
+/// ```
 pub fn checks(x: u8) -> bool {
     #[cfg(windows)]
     {
@@ -21,6 +37,19 @@ pub fn checks(x: u8) -> bool {
     false
 }
 
+/// 执行 PoW 式忙等睡眠并返回可自校验的签名值。
+///
+/// 睡眠时长由拟合参数换算为忙等轮数，附带输出到 stdout 的进度计数；
+/// 返回值用 [`verify_sleep`] 校验是否与请求时长一致（防篡改计时）。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::{pow_sleep, verify_sleep};
+///
+/// let s = pow_sleep(1.0);
+/// assert!(verify_sleep(s, 1.0));
+/// ```
 pub fn pow_sleep<S: Into<f64>>(ms: S) -> u64 {
     let t = black_box(ms.into());
 
@@ -42,7 +71,7 @@ pub fn pow_sleep<S: Into<f64>>(ms: S) -> u64 {
             ((t - intercept).max(0.0) / slope).max(1.0).round() as usize
         }
     };
-    print!("{i}");
+    // print!("{i}");
 
     let mut table = vec![0u64; 7];
     let mut s = black_box(seed() ^ derive(t as u64));
@@ -100,6 +129,17 @@ pub fn pow_sleep<S: Into<f64>>(ms: S) -> u64 {
     (signature << 32) | payload
 }
 
+/// 校验 [`pow_sleep`] 返回的签名值是否与请求时长一致。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::{pow_sleep, verify_sleep};
+///
+/// let s = pow_sleep(1.0);
+/// assert!(verify_sleep(s, 1.0));
+/// assert!(!verify_sleep(s, 999.0));
+/// ```
 #[inline(always)]
 pub fn verify_sleep(s: u64, ms: impl Into<f64>) -> bool {
     let t: f64 = ms.into();
@@ -114,6 +154,15 @@ pub fn verify_sleep(s: u64, ms: impl Into<f64>) -> bool {
     extracted_signature == expected_signature
 }
 
+/// 采集单调时钟探针（1GHz 归一化，见 `lib-unknown`）。
+///
+/// # Examples
+///
+/// ```rust
+/// use anti_dbg::probe;
+///
+/// let _ = probe();
+/// ```
 pub fn probe() -> u64 {
     lib_unknown::rand::probe()
 }
